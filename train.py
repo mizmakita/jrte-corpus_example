@@ -18,11 +18,13 @@ TASK2LABELS = {
     "pn": ["neu", "pos", "neg"],
     "rhr": ["no", "yes"],
     "rte": ["NE", "E"],
+    "ebc": ["NE", "E"],
 }
 TASK2COLUMNNUM = {
     "pn": 5,
     "rhr": 5,
     "rte": 7,
+    "ebc": 7,
 }
 
 
@@ -43,7 +45,7 @@ class MyDataset(torch.utils.data.Dataset):
 
 def read_data(path_data_list: typing.List[Path], target: str, task: str):
     texts_a: typing.List[str] = []
-    if task == 'rte':
+    if task in ['rte','ebc']:
         texts_b: typing.Optional[typing.List[str]] = []
     else:
         texts_b = None
@@ -58,13 +60,14 @@ def read_data(path_data_list: typing.List[Path], target: str, task: str):
                     assert len(items) == TASK2COLUMNNUM[task]
                     if items[-1] != target:
                         continue
-                    if task == 'rte':
+                    if task in ['rte','ebc']:
                         assert texts_b is not None
                         texts_a.append(items[2])
                         texts_b.append(items[3])
                     else:
                         texts_a.append(items[2])
-                    labels.append(origlabel2label[int(items[1])])
+                    _label = items[1]
+                    labels.append(origlabel2label[int(_label)])
 
     if len(labels) == 0:
         raise KeyError("No examples are given or invalid path")
@@ -89,13 +92,15 @@ def predict(*,
             path_input.open() as inf, \
             torch.no_grad():
         for line in inf:
-            if task == 'rte':
+            if task in ['rte', 'ebc']:
                 items = line.strip().split('\t')
                 assert len(items) == 2
                 source = tokenizer.batch_encode_plus([items],
+                                                     padding=True,
                                                      return_tensors='pt')
             else:
                 source = tokenizer.batch_encode_plus([line.strip()],
+                                                     padding=True,
                                                      return_tensors='pt')
 
             source.to(device)
@@ -133,9 +138,11 @@ def evaluate(*,
         for (text_a, text_b, gold_label_idx) in zip(test_texts_a, test_texts_b, test_labels):
             if text_b is None:
                 source = tokenizer.batch_encode_plus([text_a],
+                                                     padding=True,
                                                      return_tensors='pt')
             else:
                 source = tokenizer.batch_encode_plus([[text_a, text_b]],
+                                                     padding=True,
                                                      return_tensors='pt')
             source.to(device)
             outputs = model(
@@ -162,18 +169,24 @@ def main(*, path_data_list: typing.List[Path], path_out: Path, base: str,
 
     train_texts_a, train_texts_b, train_labels \
         = read_data(path_data_list, 'train', task)
+    for i in range(3,100):
+      a = train_texts_a[i]
+      b = train_texts_b[i]
+      l = train_labels[i]
+      if int(l) > 0:
+        print(f'# {i} {a} {b} {l}')
+
     train_encodings = tokenizer(text=train_texts_a, text_pair=train_texts_b,
                                 truncation=True,
-                                padding='max_length',
-                                max_length=max_length)
+                                padding=True, max_length=max_length)
+
     train_dataset = MyDataset(train_encodings, train_labels)
 
     eval_texts_a, eval_texts_b, eval_labels \
         = read_data(path_data_list, 'dev', task)
     eval_encodings = tokenizer(text=eval_texts_a, text_pair=eval_texts_b,
                                truncation=True,
-                               padding='max_length',
-                               max_length=max_length)
+                               padding=True, max_length=max_length)
     eval_dataset = MyDataset(eval_encodings, eval_labels)
 
     training_args = TrainingArguments(
@@ -217,7 +230,7 @@ def get_opts() -> argparse.Namespace:
     oparser = argparse.ArgumentParser()
     oparser.add_argument("--inputs", "-i", action="append", type=Path)
     oparser.add_argument("--output", "-o", default='/dev/stdout', type=Path)
-    oparser.add_argument("--task", choices=["pn", "rhr", "rte"], required=True)
+    oparser.add_argument("--task", choices=["pn", "rhr", "rte", "ebc"], required=True)
     oparser.add_argument("--base",
                          default=default_base)
     oparser.add_argument("--log", default="logs", type=Path)
@@ -226,7 +239,7 @@ def get_opts() -> argparse.Namespace:
     oparser.add_argument("--epoch", type=int, default=3)
     oparser.add_argument("--warmup_step", type=int, default=500)
     oparser.add_argument("--weight_decay", type=float, default=0.01)
-    oparser.add_argument("--max_length", type=int, default=48)
+    oparser.add_argument("--max_length", type=int, default=32)
 
     oparser.add_argument("--evaluate", action="store_true")
     oparser.add_argument("--predict", action="store_true")
