@@ -239,7 +239,7 @@ def get_opts() -> argparse.Namespace:
     oparser.add_argument("--epoch", type=int, default=3)
     oparser.add_argument("--warmup_step", type=int, default=500)
     oparser.add_argument("--weight_decay", type=float, default=0.01)
-    oparser.add_argument("--max_length", type=int, default=32)
+    oparser.add_argument("--max_length", type=int, default=48)
 
     oparser.add_argument("--evaluate", action="store_true")
     oparser.add_argument("--predict", action="store_true")
